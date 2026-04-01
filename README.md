@@ -1,9 +1,3 @@
-# Kubernetes Lab - Web Load Balancing, HTTPS, Monitoring, and Alerting
-
-This project is the Kubernetes version of Lab 1.  
-The goal is to keep the same logical architecture as the original lab:
-
-- an external entry point
 - reverse proxying
 - load balancing across two backend servers
 - HTTPS with a self-signed certificate
@@ -70,110 +64,196 @@ service.yaml
 ingress.yaml
 test-alert-rule.yaml
 alertmanager-email.yaml
-4. Flask Application
 
-The application is a simple Flask web app that returns the pod identity so load balancing can be verified.
 
-Example idea:
 
-return a message from the current pod
-refresh multiple times to observe alternation between replicas
-5. Build Docker Image
+=========================================
 
-Example Docker build command:
+Check status:
 
-docker build -t flask-app .
+================ COMMAND ================
 
-If using Minikube local Docker environment, use the Minikube Docker daemon first if needed.
+minikube status
+kubectl get nodes
 
-Example:
+=========================================
 
-minikube docker-env
+2. Build the Flask Application Image
 
-Then evaluate the environment if needed in the shell you use.
+================ COMMAND ================
 
-6. Kubernetes Deployment
-6.1 Deployment
+docker build -t flask-local-app .
 
-We deployed the Flask application with 2 replicas.
+=========================================
 
-Apply:
+If needed for Minikube Docker environment:
+
+================ COMMAND ================
+
+minikube image load flask-local-app
+
+=========================================
+
+3. Deploy the Application
+
+Apply the deployment and service:
+
+================ COMMAND ================
 
 kubectl apply -f deployment.yaml
-
-Check:
-
-kubectl get pods
-6.2 Service
-
-We created a Service to expose the deployment internally and provide load balancing between the two pods.
-
-Apply:
-
 kubectl apply -f service.yaml
 
-Check:
+=========================================
 
+Verify:
+
+================ COMMAND ================
+
+kubectl get pods
 kubectl get svc
-7. Ingress Controller
 
-The NGINX Ingress Controller was used as the reverse proxy.
+=========================================
 
-Check ingress namespace resources:
+4. Install NGINX Ingress Controller
+
+================ COMMAND ================
+
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+
+=========================================
+
+Verify:
+
+================ COMMAND ================
 
 kubectl get pods -n ingress-nginx
 kubectl get svc -n ingress-nginx
-8. Ingress Resource
 
-The app was exposed using an Ingress resource for:
+=========================================
 
-flask.local
+5. Configure Local DNS on Windows
 
-Example apply:
+Edit the Windows hosts file and add:
+
+================ TEXT ================
+
+127.0.0.1 flask.local
+
+====================================
+
+Path of the file:
+
+================ TEXT ================
+
+C:\Windows\System32\drivers\etc\hosts
+
+====================================
+
+6. Create and Apply Ingress
+
+Apply the ingress file:
+
+================ COMMAND ================
 
 kubectl apply -f ingress.yaml
 
-Check:
+=========================================
+
+Verify:
+
+================ COMMAND ================
 
 kubectl get ingress
 kubectl describe ingress flask-ingress
-9. Local Access with Port Forwarding
-HTTP
+
+=========================================
+
+Port-forward HTTP locally:
+
+================ COMMAND ================
+
 kubectl port-forward --namespace=ingress-nginx service/ingress-nginx-controller 8080:80
 
-Application URL:
+=========================================
+
+Test in browser:
+
+================ URL ================
 
 http://flask.local:8080
-HTTPS
-kubectl port-forward --namespace=ingress-nginx service/ingress-nginx-controller 8443:443
 
-Application URL:
+====================================
 
-https://flask.local:8443
-10. HTTPS Configuration
+7. Verify Load Balancing
 
-A self-signed certificate was created for flask.local.
+The Flask app was deployed with 2 replicas.
 
-Generated files used during the lab included:
+Check pods:
 
-flask.local.crt
-flask.local.key or flask.local-key.pem
+================ COMMAND ================
+
+kubectl get pods
+
+=========================================
+
+Refresh the browser several times or run a benchmark test and observe alternating pod responses.
+
+Stress test:
+
+================ COMMAND ================
+
+ab -n 10000 -c 10 http://flask.local:8080/
+
+=========================================
+
+Expected result:
+
+requests succeed
+responses alternate between replicas
+load balancing works correctly
+8. Enable HTTPS with a Self-Signed Certificate
+8.1 Generate certificate using mkcert
+
+If mkcert is installed:
+
+================ COMMAND ================
+
+mkcert -install
+mkcert flask.local
+
+=========================================
+
+This generates files similar to:
+
+================ TEXT ================
+
 flask.local.pem
-flask.local.pfx
+flask.local-key.pem
 
-The TLS secret was created in Kubernetes:
+====================================
+
+8.2 Create Kubernetes TLS secret
+
+================ COMMAND ================
 
 kubectl create secret tls flask-local-tls --cert="$HOME\flask.local.pem" --key="$HOME\flask.local-key.pem"
 
-If the secret already existed:
+=========================================
+
+If the secret already exists:
+
+================ COMMAND ================
 
 kubectl delete secret flask-local-tls
 kubectl create secret tls flask-local-tls --cert="$HOME\flask.local.pem" --key="$HOME\flask.local-key.pem"
-Ingress TLS configuration
 
-The Ingress was updated to use TLS and force HTTPS redirect.
+=========================================
 
-Example:
+8.3 Update Ingress for TLS
+
+Example ingress.yaml:
+
+================ YAML ================
 
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -199,170 +279,153 @@ spec:
                 port:
                   number: 80
 
-Apply:
+=====================================
+
+Apply again:
+
+================ COMMAND ================
 
 kubectl apply -f ingress.yaml
-11. Load Balancing Verification
 
-Load balancing was verified by sending repeated requests and observing different pod IDs / responses.
+=========================================
 
-We used browser refresh and ApacheBench stress tests.
+8.4 Port-forward HTTPS
 
-Example:
+================ COMMAND ================
 
-ab -n 10000 -c 10 http://flask.local:8080/
+kubectl port-forward -n ingress-nginx service/ingress-nginx-controller 8443:443
 
-Later HTTPS was also used:
+=========================================
 
-ab -n 500 -c 10 https://flask.local:8443/
+Test HTTPS:
 
-Result:
+================ URL ================
 
-requests were distributed across the replicas
-the application remained available
-no failures were observed in the successful test phase
-12. Monitoring with Helm, Prometheus, and Grafana
-12.1 Add Helm repository
+https://flask.local:8443
+
+====================================
+
+Or test with curl:
+
+================ COMMAND ================
+
+curl -k https://flask.local:8443
+
+=========================================
+
+9. Install Prometheus and Grafana with Helm
+
+Add the Helm repository:
+
+================ COMMAND ================
+
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
-12.2 Create monitoring namespace
+
+=========================================
+
+Create namespace:
+
+================ COMMAND ================
+
 kubectl create namespace monitoring
-12.3 Install kube-prometheus-stack
+
+=========================================
+
+Install the monitoring stack:
+
+================ COMMAND ================
+
 helm install kube-prom-stack prometheus-community/kube-prometheus-stack -n monitoring
 
-If the namespace did not exist yet, another valid form is:
+=========================================
 
-helm install kube-prom-stack prometheus-community/kube-prometheus-stack -n monitoring --create-namespace
-12.4 Check monitoring pods
+Check pods:
+
+================ COMMAND ================
+
 kubectl get pods -n monitoring
-kubectl get pods -n monitoring -w
-13. Grafana Access
+kubectl get svc -n monitoring
+
+=========================================
+
+10. Access Grafana
 
 Port-forward Grafana:
 
+================ COMMAND ================
+
 kubectl port-forward -n monitoring svc/kube-prom-stack-grafana 3000:80
 
-Get the admin password in PowerShell:
+=========================================
+
+Get Grafana admin password:
+
+================ COMMAND ================
 
 kubectl get secret -n monitoring kube-prom-stack-grafana -o jsonpath="{.data.admin-password}" | ForEach-Object {[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($_))}
 
-Open:
+=========================================
+
+Grafana URL:
+
+================ URL ================
 
 http://localhost:3000
 
-Login:
+====================================
 
-username: admin
-password: result of the previous command
+Username:
 
-In Grafana, dashboards such as Kubernetes node/pod resource dashboards were used to observe metrics.
+================ TEXT ================
 
-14. Prometheus Access
+admin
 
-List services first if needed:
+====================================
 
-kubectl get svc -n monitoring
+In Grafana, dashboards were checked to confirm that metrics were available.
 
-Prometheus service was accessed by port-forwarding.
-If port 9090 was already used locally, another local port was used such as 9091.
+11. Access Prometheus
 
-Example:
+Port-forward Prometheus:
+
+================ COMMAND ================
 
 kubectl port-forward -n monitoring svc/kube-prom-stack-kube-prome-prometheus 9091:9090
 
-Open:
+=========================================
+
+Prometheus URL:
+
+================ URL ================
 
 http://localhost:9091
 
-Useful pages:
+====================================
+
+Targets page:
+
+================ URL ================
+
+http://localhost:9091/targets
+
+====================================
+
+Alerts page:
+
+================ URL ================
 
 http://localhost:9091/alerts
-http://localhost:9091/rules
 
-Useful query:
+====================================
 
-ALERTS
+A few Minikube control-plane targets may remain down. This is common in local single-node clusters and does not prevent the monitoring stack from working.
 
-or:
+12. Create a Test Alert Rule
 
-ALERTS{alertname="TestEmailAlert"}
-15. Alertmanager Access
+Example test-alert-rule.yaml:
 
-Port-forward Alertmanager:
-
-kubectl port-forward -n monitoring svc/kube-prom-stack-kube-prome-alertmanager 9094:9093
-
-Open:
-
-http://localhost:9094
-
-This was used to verify that the test alert reached Alertmanager.
-
-16. Alertmanager Email Configuration
-
-An email receiver was configured using AlertmanagerConfig.
-
-Example file:
-
-apiVersion: monitoring.coreos.com/v1alpha1
-kind: AlertmanagerConfig
-metadata:
-  name: email-alerts
-  namespace: monitoring
-  labels:
-    alertmanagerConfig: email-alerts
-spec:
-  route:
-    receiver: email-me
-    groupBy: ["alertname"]
-    groupWait: 30s
-    groupInterval: 5m
-    repeatInterval: 1h
-  receivers:
-    - name: email-me
-      emailConfigs:
-        - to: "RECEIVER_EMAIL"
-          from: "SENDER_GMAIL"
-          smarthost: "smtp.gmail.com:587"
-          authUsername: "SENDER_GMAIL"
-          authIdentity: "SENDER_GMAIL"
-          authPassword:
-            name: alertmanager-email-secret
-            key: smtp-password
-          requireTLS: true
-
-Apply:
-
-kubectl apply -f alertmanager-email.yaml
-Email password secret
-
-A Gmail App Password was stored in a Kubernetes secret:
-
-kubectl create secret generic alertmanager-email-secret -n monitoring --from-literal=smtp-password="YOUR_GMAIL_APP_PASSWORD"
-
-If it already existed:
-
-kubectl delete secret alertmanager-email-secret -n monitoring
-kubectl create secret generic alertmanager-email-secret -n monitoring --from-literal=smtp-password="YOUR_GMAIL_APP_PASSWORD"
-Make Alertmanager select the config
-
-Because the selector was empty, Helm was used to update the Alertmanager selector:
-
-helm upgrade kube-prom-stack prometheus-community/kube-prometheus-stack `
-  -n monitoring `
-  --reuse-values `
-  --set alertmanager.alertmanagerSpec.alertmanagerConfigSelector.matchLabels.alertmanagerConfig=email-alerts `
-  --set alertmanager.alertmanagerSpec.alertmanagerConfigNamespaceSelector.matchLabels.kubernetes\.io/metadata\.name=monitoring
-
-Check:
-
-kubectl get alertmanager -n monitoring -o yaml | Select-String alertmanagerConfigSelector
-kubectl get alertmanager -n monitoring -o yaml | Select-String alertmanagerConfigNamespaceSelector
-17. Test Alert Rule
-
-A custom Prometheus rule was created to trigger a test alert.
-
-test-alert-rule.yaml:
+================ YAML ================
 
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -384,118 +447,207 @@ spec:
             summary: "Test email alert"
             description: "This is a test alert from kube-prometheus-stack."
 
-Apply:
+=====================================
+
+Apply it:
+
+================ COMMAND ================
 
 kubectl apply -f test-alert-rule.yaml
 
-Check rules:
+=========================================
 
-kubectl get prometheusrule -n monitoring
-kubectl describe prometheusrule test-email-alert -n monitoring
+Verify in Prometheus query page:
 
-Prometheus query used to verify:
+================ QUERY ================
 
 ALERTS{alertname="TestEmailAlert"}
 
-Observed states:
+======================================
+
+Possible states:
 
 pending
-later visible in Alertmanager UI
-18. Useful Debug Commands
-General Kubernetes
+firing
+13. Configure Alertmanager Email Receiver
+
+Create the secret containing the Gmail app password:
+
+================ COMMAND ================
+
+kubectl create secret generic alertmanager-email-secret -n monitoring --from-literal=smtp-password="YOUR_APP_PASSWORD"
+
+=========================================
+
+If the secret already exists:
+
+================ COMMAND ================
+
+kubectl delete secret alertmanager-email-secret -n monitoring
+kubectl create secret generic alertmanager-email-secret -n monitoring --from-literal=smtp-password="YOUR_APP_PASSWORD"
+
+=========================================
+
+Example alertmanager-email.yaml:
+
+================ YAML ================
+
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: email-alerts
+  namespace: monitoring
+  labels:
+    alertmanagerConfig: email-alerts
+spec:
+  route:
+    receiver: email-me
+    groupBy: ["alertname"]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 1h
+  receivers:
+    - name: email-me
+      emailConfigs:
+        - to: "YOUR_RECEIVER_EMAIL"
+          from: "YOUR_GMAIL_ADDRESS"
+          smarthost: "smtp.gmail.com:587"
+          authUsername: "YOUR_GMAIL_ADDRESS"
+          authIdentity: "YOUR_GMAIL_ADDRESS"
+          authPassword:
+            name: alertmanager-email-secret
+            key: smtp-password
+          requireTLS: true
+
+=====================================
+
+Apply it:
+
+================ COMMAND ================
+
+kubectl apply -f alertmanager-email.yaml
+
+=========================================
+
+Make Alertmanager select the config:
+
+================ COMMAND ================
+
+helm upgrade kube-prom-stack prometheus-community/kube-prometheus-stack `
+  -n monitoring `
+  --reuse-values `
+  --set alertmanager.alertmanagerSpec.alertmanagerConfigSelector.matchLabels.alertmanagerConfig=email-alerts `
+  --set alertmanager.alertmanagerSpec.alertmanagerConfigNamespaceSelector.matchLabels.kubernetes\.io/metadata\.name=monitoring
+
+=========================================
+
+Verify selector:
+
+================ COMMAND ================
+
+kubectl get alertmanager -n monitoring -o yaml | Select-String alertmanagerConfigSelector
+kubectl get alertmanager -n monitoring -o yaml | Select-String alertmanagerConfigNamespaceSelector
+
+=========================================
+
+14. Access Alertmanager
+
+Port-forward Alertmanager:
+
+================ COMMAND ================
+
+kubectl port-forward -n monitoring svc/kube-prom-stack-kube-prome-alertmanager 9094:9093
+
+=========================================
+
+Open:
+
+================ URL ================
+
+http://localhost:9094
+
+====================================
+
+When TestEmailAlert becomes firing, it should appear in Alertmanager.
+
+15. Useful Debug Commands
+General Kubernetes checks
+
+================ COMMAND ================
+
 kubectl get pods
 kubectl get svc
 kubectl get ingress
 kubectl get pods -n monitoring
 kubectl get svc -n monitoring
+
+=========================================
+
+Check monitoring stack
+
+================ COMMAND ================
+
+kubectl get pods -n monitoring -w
 kubectl get events -n monitoring --sort-by=.metadata.creationTimestamp
-Check specific monitoring pods
-kubectl describe pod -n monitoring -l app.kubernetes.io/name=grafana
-kubectl describe pod -n monitoring prometheus-kube-prom-stack-kube-prome-prometheus-0
-Alertmanager logs
+
+=========================================
+
+Check Prometheus rules
+
+================ COMMAND ================
+
+kubectl get prometheusrule -n monitoring
+kubectl describe prometheusrule test-email-alert -n monitoring
+
+=========================================
+
+Check Alertmanager logs
+
+================ COMMAND ================
+
 kubectl logs -n monitoring statefulset/alertmanager-kube-prom-stack-kube-prome-alertmanager
-Prometheus logs
-kubectl logs -n monitoring statefulset/prometheus-kube-prom-stack-kube-prome-prometheus
+
+=========================================
+
 Check generated Alertmanager config
+
+================ COMMAND ================
+
 [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String((kubectl get secret -n monitoring alertmanager-kube-prom-stack-kube-prome-alertmanager-generated -o jsonpath="{.data.alertmanager\.yaml}")))
-Check local port conflicts on Windows
+
+=========================================
+
+Check Prometheus query manually
+
+================ QUERY ================
+
+ALERTS
+ALERTS{alertname="TestEmailAlert"}
+
+======================================
+
+Find port conflicts on Windows
+
+================ COMMAND ================
+
 netstat -ano | findstr :9090
 taskkill /PID <PID> /F
-19. Problems Encountered and Fixes
-1. OpenSSL not recognized on Windows
-Cause: OpenSSL was not installed or not in PATH
-Fix: used Windows/PowerShell certificate generation workflow and other local certificate handling tools
-2. monitoring namespace not found
-Cause: Helm install attempted before namespace creation
-Fix:
-kubectl create namespace monitoring
-3. Grafana pod in Pending / ContainerCreating
-Cause: stack was still starting
-Fix: waited for pods to become running and checked pod status
-4. Wrong Prometheus service name
-Cause: tried to port-forward a non-existing service name
-Fix: listed monitoring services first and used the correct one
-5. Port 9090 already in use
-Cause: local port conflict
-Fix: used another local port such as 9091
-6. AlertmanagerConfig version issue
-Cause: v1beta1 did not match installed CRD
-Fix: used:
-apiVersion: monitoring.coreos.com/v1alpha1
-7. Test alert not visible at first
-Cause: rule needed correct label for Helm release selection
-Fix: added:
-labels:
-  release: kube-prom-stack
-8. Email not received
-Cause: Alertmanager selector/config merge and email delivery validation still required
-Fix attempts included:
-verifying selector
-verifying generated config
-checking logs
-using a Gmail App Password
-20. Final Result
 
-The lab was successfully reproduced in Kubernetes with the same logical architecture as the original VM-based lab:
+=========================================
 
-reverse proxy via NGINX Ingress
-load balancing with a Service across 2 replicas
-HTTPS enabled with TLS secret
-monitoring using Prometheus and Grafana
-alerting configured with Alertmanager and custom alert rules
+16. Results
 
-Main achievements:
+The following objectives were achieved:
 
-application deployed successfully
-load balancing verified
-HTTPS working
-Prometheus and Grafana working
-alert rule visible in Prometheus and Alertmanager
-21. Commands Summary
-Deployment
-kubectl apply -f deployment.yaml
-kubectl apply -f service.yaml
-kubectl apply -f ingress.yaml
-Ingress forwarding
-kubectl port-forward --namespace=ingress-nginx service/ingress-nginx-controller 8080:80
-kubectl port-forward --namespace=ingress-nginx service/ingress-nginx-controller 8443:443
-Monitoring install
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update
-kubectl create namespace monitoring
-helm install kube-prom-stack prometheus-community/kube-prometheus-stack -n monitoring
-Grafana
-kubectl port-forward -n monitoring svc/kube-prom-stack-grafana 3000:80
-kubectl get secret -n monitoring kube-prom-stack-grafana -o jsonpath="{.data.admin-password}" | ForEach-Object {[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($_))}
-Prometheus
-kubectl port-forward -n monitoring svc/kube-prom-stack-kube-prome-prometheus 9091:9090
-Alertmanager
-kubectl port-forward -n monitoring svc/kube-prom-stack-kube-prome-alertmanager 9094:9093
-Alerting
-kubectl apply -f alertmanager-email.yaml
-kubectl apply -f test-alert-rule.yaml
-helm upgrade kube-prom-stack prometheus-community/kube-prometheus-stack `
-  -n monitoring `
-  --reuse-values `
-  --set alertmanager.alertmanagerSpec.alertmanagerConfigSelector.matchLabels.alertmanagerConfig=email-alerts `
-  --set alertmanager.alertmanagerSpec.alertmanagerConfigNamespaceSelector.matc
+Flask application deployed successfully on Kubernetes
+Deployment scaled to 2 replicas
+Service used as internal load balancer
+NGINX Ingress Controller exposed the application
+HTTPS enabled with a self-signed certificate
+Prometheus installed and scraping metrics
+Grafana installed and visualizing metrics
+Alertmanager configured and tested with a custom alert rule
+17. Notes
+On Windows, port-forwarding was used because direct port 80/443 access may be blocked.
+On Minikube, some control-plane monitoring targets may stay down. This is normal in local lab environments.
+For Gmail SMTP, an App Password is required instead of the normal Gmail password.
