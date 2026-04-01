@@ -1,0 +1,8 @@
+*.pem
+*.key
+*.crt
+*.pfx
+pass.txt
+pass.b64
+__pycache__/
+.env

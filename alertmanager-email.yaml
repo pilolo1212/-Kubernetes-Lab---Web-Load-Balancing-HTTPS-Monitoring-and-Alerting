@@ -1,0 +1,26 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: email-alerts
+  namespace: monitoring
+  labels:
+    alertmanagerConfig: email-alerts
+spec:
+  route:
+    receiver: email-me
+    groupBy: ["alertname"]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 1h
+  receivers:
+    - name: email-me
+      emailConfigs:
+        - to: "oussafi.ilya@etu.uae.ac.ma"
+          from: "moncefsolja327@gmail.com"
+          smarthost: "smtp.gmail.com:587"
+          authUsername: "moncefsolja327@gmail.com"
+          authIdentity: "moncefsolja327@gmail.com"
+          authPassword:
+            name: alertmanager-email-secret
+            key: smtp-password
+          requireTLS: true
